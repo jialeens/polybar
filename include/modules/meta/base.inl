@@ -68,7 +68,7 @@ namespace modules {
   template <typename Impl>
   void module<Impl>::halt(string error_message) {
     m_log.err("%s: %s", name(), error_message);
-    m_log.warn("Stopping '%s'...", name());
+    m_log.notice("Stopping '%s'...", name());
     stop();
   }
 
@@ -113,6 +113,15 @@ namespace modules {
     if (running()) {
       std::unique_lock<std::mutex> lck(m_sleeplock);
       m_sleephandler.wait_for(lck, sleep_duration);
+    }
+  }
+
+  template <typename Impl>
+  template <class Clock, class Duration>
+  void module<Impl>::sleep_until(chrono::time_point<Clock, Duration> point) {
+    if (running()) {
+      std::unique_lock<std::mutex> lck(m_sleeplock);
+      m_sleephandler.wait_until(lck, point);
     }
   }
 

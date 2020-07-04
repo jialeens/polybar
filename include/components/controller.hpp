@@ -5,6 +5,7 @@
 #include <thread>
 
 #include "common.hpp"
+#include "components/types.hpp"
 #include "events/signal_fwd.hpp"
 #include "events/signal_receiver.hpp"
 #include "events/types.hpp"
@@ -18,6 +19,7 @@ POLYBAR_NS
 
 enum class alignment;
 class bar;
+template <output_policy>
 class command;
 class config;
 class connection;
@@ -80,7 +82,7 @@ class controller
   unique_ptr<bar> m_bar;
   unique_ptr<ipc> m_ipc;
   unique_ptr<inotify_watch> m_confwatch;
-  unique_ptr<command> m_command;
+  unique_ptr<command<output_policy::IGNORED>> m_command;
 
   array<unique_ptr<file_descriptor>, 2> m_queuefd{};
 
@@ -128,16 +130,6 @@ class controller
    * \brief Time to wait for subsequent events
    */
   std::chrono::milliseconds m_swallow_update{10};
-
-  /**
-   * \brief Time to throttle input events
-   */
-  std::chrono::milliseconds m_swallow_input{30};
-
-  /**
-   * \brief Time of last handled input event
-   */
-  std::chrono::time_point<std::chrono::system_clock, std::chrono::milliseconds> m_lastinput;
 
   /**
    * \brief Input data

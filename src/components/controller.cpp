@@ -58,7 +58,11 @@ controller::controller(connection& conn, signal_emitter& emitter, const logger& 
     , m_bar(forward<decltype(bar)>(bar))
     , m_ipc(forward<decltype(ipc)>(ipc))
     , m_confwatch(forward<decltype(confwatch)>(confwatch)) {
-  m_swallow_input = m_conf.get("settings", "throttle-input-for", m_swallow_input);
+
+  if (m_conf.has("settings", "throttle-input-for")) {
+    m_log.warn("The config parameter 'settings.throttle-input-for' is deprecated, it will be removed in the future. Please remove it from your config");
+  }
+
   m_swallow_limit = m_conf.deprecated("settings", "eventqueue-swallow", "throttle-output", m_swallow_limit);
   m_swallow_update = m_conf.deprecated("settings", "eventqueue-swallow-time", "throttle-output-for", m_swallow_update);
 
@@ -88,30 +92,6 @@ controller::controller(connection& conn, signal_emitter& emitter, const logger& 
   if (!created_modules) {
     throw application_error("No modules created");
   }
-
-  /*
-   * Check if each module name only appears once
-   */
-  std::sort(m_modules.begin(), m_modules.end(), [](const auto& m1, const auto& m2) { return m1->name() < m2->name(); });
-
-  auto dup_it = m_modules.cbegin();
-
-  do {
-    auto equal_predicate = [](const auto& m1, const auto& m2) { return m1->name() == m2->name(); };
-    dup_it = std::adjacent_find(dup_it, m_modules.cend(), equal_predicate);
-
-    if (dup_it != m_modules.cend()) {
-      m_log.err(
-          "The module \"%s\" appears multiple times in your modules list. "
-          "This is deprecated and should be avoided, as it can lead to inconsistent behavior. "
-          "Both modules will be displayed for now.",
-          (*dup_it)->name());
-
-      dup_it = std::find_if_not(dup_it, m_modules.cend(), std::bind(equal_predicate, *dup_it, std::placeholders::_1));
-    } else {
-      break;
-    }
-  } while (true);
 }
 
 /**
@@ -197,7 +177,7 @@ bool controller::run(bool writeback, string snapshot_dst) {
     m_event_thread.join();
   }
 
-  m_log.warn("Termination signal received, shutting down...");
+  m_log.notice("Termination signal received, shutting down...");
 
   return !g_reload;
 }
@@ -225,8 +205,6 @@ bool controller::enqueue(event&& evt) {
 bool controller::enqueue(string&& input_data) {
   if (!m_inputdata.empty()) {
     m_log.trace("controller: Swallowing input event (pending data)");
-  } else if (chrono::system_clock::now() - m_swallow_input < m_lastinput) {
-    m_log.trace("controller: Swallowing input event (throttled)");
   } else {
     m_inputdata = forward<string>(input_data);
     return enqueue(make_input_evt());
@@ -414,7 +392,6 @@ void controller::process_eventqueue() {
 void controller::process_inputdata() {
   if (!m_inputdata.empty()) {
     string cmd = m_inputdata;
-    m_lastinput = chrono::time_point_cast<decltype(m_swallow_input)>(chrono::system_clock::now());
     m_inputdata.clear();
 
     for (auto&& handler : m_inputhandlers) {
@@ -432,7 +409,7 @@ void controller::process_inputdata() {
       }
 
       m_log.info("Executing shell command: %s", cmd);
-      m_command = command_util::make_command(move(cmd));
+      m_command = command_util::make_command<output_policy::IGNORED>(move(cmd));
       m_command->exec();
       m_command.reset();
       process_update(true);
